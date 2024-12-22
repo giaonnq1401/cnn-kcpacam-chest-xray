@@ -13,7 +13,15 @@ Apply KPCA-CAM to analyze lung X-ray images, determine the image area that the m
 ```python -m venv env
 source env/bin/activate  # Windows: .\env\Scripts\activate
 pip install -r requirements.txt
+```
+
+Finetune (Restnet50)
+```
+make fine-tun
+```
 
 
-
-
+Visualize KPCA-CAM
+```
+make run
+```

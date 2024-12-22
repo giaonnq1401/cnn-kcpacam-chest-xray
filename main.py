@@ -1,114 +1,140 @@
-import os
 import torch
-from torchvision.models import resnet50, ResNet50_Weights
-from utils.preprocess import load_chest_xray_dataset
-from utils.visualize import visualize_cam
-from pytorch_grad_cam import KPCA_CAM
+from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torchvision.models import resnet50, ResNet50_Weights
+from sklearn.metrics import roc_auc_score
+import numpy as np
+import argparse
+import os
+from utils.preprocess import ChestXrayDataset, get_transforms, prepare_data, get_class_weights
 
-def initialize_model(device):
-    """
-    Khởi tạo mô hình ResNet50 và đưa về thiết bị CPU/GPU.
-    Args:
-        device (str): Thiết bị (CPU hoặc GPU).
-    Returns:
-        model (torch.nn.Module): Mô hình ResNet50 đã được khởi tạo.
-    """
-    # model = resnet50(pretrained=True)
+def get_model(num_classes):
     model = resnet50(weights=ResNet50_Weights.DEFAULT)
-    model.fc = nn.Linear(model.fc.in_features, 2)  # 2 lớp: Normal, Pneumonia
-    model.to(device)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Sequential(
+        nn.Linear(num_ftrs, num_classes),
+        nn.Sigmoid()
+    )
     return model
 
-def fine_tune_model(model, train_dataset, val_dataset, device, epochs=5, batch_size=32):
-    """
-    Fine-tune mô hình ResNet50 trên tập X-ray phổi.
-    Args:
-        model (torch.nn.Module): Mô hình đã load.
-        train_dataset (list): Tập train (ảnh và label).
-        val_dataset (list): Tập validation (ảnh và label).
-        device (str): Thiết bị (CPU hoặc GPU).
-        epochs (int): Số epoch huấn luyện.
-        batch_size (int): Kích thước batch.
-    """
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+class ModelTrainer:
+    def __init__(self, model, train_loader, val_loader, criterion, optimizer, device):
+        self.model = model
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.criterion = criterion
+        self.optimizer = optimizer
+        self.device = device
+        self.best_val_loss = float('inf')
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    def train_epoch(self):
+        self.model.train()
+        running_loss = 0.0
+        predictions = []
+        labels_list = []
 
-    for epoch in range(epochs):
-        model.train()
-        total_loss = 0
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
+        for inputs, labels in self.train_loader:
+            inputs = inputs.to(self.device)
+            labels = labels.to(self.device)
 
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-
-            optimizer.zero_grad()
+            self.optimizer.zero_grad()
+            outputs = self.model(inputs)
+            loss = self.criterion(outputs, labels.float())
             loss.backward()
-            optimizer.step()
+            self.optimizer.step()
 
-            total_loss += loss.item()
+            running_loss += loss.item()
+            predictions.extend(outputs.cpu().detach().numpy())
+            labels_list.extend(labels.cpu().numpy())
 
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {total_loss/len(train_loader):.4f}")
+        epoch_loss = running_loss / len(self.train_loader)
+        epoch_auc = roc_auc_score(np.array(labels_list), np.array(predictions), average='macro')
+        
+        return epoch_loss, epoch_auc
 
-        model.eval()
-        correct, total = 0, 0
+    def validate(self):
+        self.model.eval()
+        val_loss = 0.0
+        predictions = []
+        labels_list = []
+
         with torch.no_grad():
-            for images, labels in val_loader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                _, predicted = torch.max(outputs, 1)
-                correct += (predicted == labels).sum().item()
-                total += labels.size(0)
+            for inputs, labels in self.val_loader:
+                inputs = inputs.to(self.device)
+                labels = labels.to(self.device)
+                outputs = self.model(inputs)
+                loss = self.criterion(outputs, labels.float())
+                
+                val_loss += loss.item()
+                predictions.extend(outputs.cpu().numpy())
+                labels_list.extend(labels.cpu().numpy())
 
-        print(f"Validation Accuracy: {correct / total * 100:.2f}%")
-
-def perform_kpca_cam(model, image_tensor, device, output_path):
-    """
-    Tính toán KPCA-CAM trên một ảnh X-ray.
-    Args:
-        model (torch.nn.Module): Mô hình ResNet50 đã fine-tune.
-        image_tensor (torch.Tensor): Tensor của ảnh đầu vào.
-        device (str): Thiết bị (CPU hoặc GPU).
-        output_path (str): Đường dẫn lưu kết quả KPCA-CAM.
-    """
-    target_layer = model.layer4[-1]
-    cam = KPCA_CAM(model=model, target_layers=[target_layer])
-
-    grayscale_cam = cam(input_tensor=image_tensor.unsqueeze(0).to(device), targets=None)
-
-    visualize_cam(image_tensor.cpu(), grayscale_cam[0], output_path)
+        val_loss = val_loss / len(self.val_loader)
+        val_auc = roc_auc_score(np.array(labels_list), np.array(predictions), average='macro')
+        
+        return val_loss, val_auc
 
 def main():
-    """
-    Chương trình chính để fine-tune mô hình và thực hiện KPCA-CAM.
-    """
-    # Cấu hình thiết bị
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--csv_path', type=str, required=True)
+    parser.add_argument('--img_dir', type=str, required=True)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--num_epochs', type=int, default=10)
+    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--output_dir', type=str, default='./checkpoints')
+    args = parser.parse_args()
 
-    # Tải dataset
-    print("Loading dataset...")
-    train_dataset = load_chest_xray_dataset(split="train")
-    val_dataset = load_chest_xray_dataset(split="validation")
-    test_dataset = load_chest_xray_dataset(split="test")
+    # Setup device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Prepare data
+    train_df, val_df = prepare_data(args.csv_path, args.img_dir)
+    
+    # Print information about the number of train/val samples
+    print(f"Training samples: {len(train_df)}")
+    print(f"Validation samples: {len(val_df)}")
+    train_transforms, val_transforms = get_transforms()
+    
+    # Create datasets
+    train_dataset = ChestXrayDataset(train_df, args.img_dir, train_transforms)
+    val_dataset = ChestXrayDataset(val_df, args.img_dir, val_transforms)
+    
+    # Create dataloaders
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    
+    # Initialize model
+    model = get_model(len(train_dataset.classes))
+    model = model.to(device)
+    
+    # Setup training
+    criterion = nn.BCELoss()
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    trainer = ModelTrainer(model, train_loader, val_loader, criterion, optimizer, device)
+    
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Training loop
+    for epoch in range(args.num_epochs):
+        train_loss, train_auc = trainer.train_epoch()
+        val_loss, val_auc = trainer.validate()
+        
+        print(f'Epoch {epoch+1}/{args.num_epochs}')
+        print(f'Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}')
+        print(f'Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}')
+        
+        # Save best model
+        if val_loss < trainer.best_val_loss:
+            trainer.best_val_loss = val_loss
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': val_loss,
+                'val_auc': val_auc
+            }, os.path.join(args.output_dir, 'best_model.pth'))
 
-    # Khởi tạo và fine-tune mô hình
-    print("Initializing and fine-tuning model...")
-    model = initialize_model(device)
-    fine_tune_model(model, train_dataset, val_dataset, device, epochs=2, batch_size=16)
-
-    # Lấy một ảnh từ tập test và thực hiện KPCA-CAM
-    print("Performing KPCA-CAM...")
-    test_image, _ = test_dataset[0]  # Lấy ảnh đầu tiên từ tập test
-    output_path = os.path.join("outputs", "kpca_cam_test_result.jpg")
-    perform_kpca_cam(model, test_image, device, output_path)
-
-    print(f"KPCA-CAM result saved to {output_path}")
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
