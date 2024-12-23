@@ -7,12 +7,11 @@ from torchvision.models import (
     vgg16, VGG16_Weights,
     vit_b_16, ViT_B_16_Weights,
 )
-from sklearn.metrics import recall_score, precision_score, f1_score, roc_auc_score
-import numpy as np
 import argparse
 import os
-from utils.preprocess import ChestXrayDataset, get_transforms, prepare_data, get_class_weights
+from utils.preprocess import ChestXrayDataset, get_transforms, prepare_data
 from utils.logger import ExperimentLogger
+from utils.trainer import ModelTrainer
 
 class ModelFactory:
     """Factory class để tạo các model khác nhau"""
@@ -45,108 +44,6 @@ class ModelFactory:
         
         return model
 
-class MetricsCalculator:
-    """Class để tính toán các metrics"""
-    @staticmethod
-    def calculate_metrics(y_true, y_pred, threshold=0.5):
-        # Convert predictions to binary using threshold
-        y_pred_binary = (y_pred > threshold).astype(int)
-        
-        # Calculate metrics for each class
-        recalls = recall_score(y_true, y_pred_binary, average=None)
-        precisions = precision_score(y_true, y_pred_binary, average=None)
-        f1_scores = f1_score(y_true, y_pred_binary, average=None)
-        auc_scores = roc_auc_score(y_true, y_pred, average=None)
-        
-        # Calculate macro averages
-        macro_recall = recall_score(y_true, y_pred_binary, average='macro')
-        macro_precision = precision_score(y_true, y_pred_binary, average='macro')
-        macro_f1 = f1_score(y_true, y_pred_binary, average='macro')
-        macro_auc = roc_auc_score(y_true, y_pred, average='macro')
-        
-        return {
-            'per_class': {
-                'recall': recalls,
-                'precision': precisions,
-                'f1': f1_scores,
-                'auc': auc_scores
-            },
-            'macro': {
-                'recall': macro_recall,
-                'precision': macro_precision,
-                'f1': macro_f1,
-                'auc': macro_auc
-            }
-        }
-
-class ModelTrainer:
-    def __init__(self, model, train_loader, val_loader, criterion, optimizer, device, classes):
-        self.model = model
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.criterion = criterion
-        self.optimizer = optimizer
-        self.device = device
-        self.classes = classes
-        self.best_val_loss = float('inf')
-        self.metrics_calculator = MetricsCalculator()
-
-    def train_epoch(self):
-        self.model.train()
-        running_loss = 0.0
-        predictions = []
-        labels_list = []
-
-        for inputs, labels in self.train_loader:
-            inputs = inputs.to(self.device)
-            labels = labels.to(self.device)
-
-            self.optimizer.zero_grad()
-            outputs = self.model(inputs)
-            loss = self.criterion(outputs, labels.float())
-            loss.backward()
-            self.optimizer.step()
-
-            running_loss += loss.item()
-            predictions.extend(outputs.cpu().detach().numpy())
-            labels_list.extend(labels.cpu().numpy())
-
-        # Convert lists to numpy arrays
-        predictions = np.array(predictions)
-        labels_list = np.array(labels_list)
-        
-        # Calculate metrics
-        metrics = self.metrics_calculator.calculate_metrics(labels_list, predictions)
-        epoch_loss = running_loss / len(self.train_loader)
-        
-        return epoch_loss, metrics
-
-    def validate(self):
-        self.model.eval()
-        val_loss = 0.0
-        predictions = []
-        labels_list = []
-
-        with torch.no_grad():
-            for inputs, labels in self.val_loader:
-                inputs = inputs.to(self.device)
-                labels = labels.to(self.device)
-                outputs = self.model(inputs)
-                loss = self.criterion(outputs, labels.float())
-                
-                val_loss += loss.item()
-                predictions.extend(outputs.cpu().numpy())
-                labels_list.extend(labels.cpu().numpy())
-
-        # Convert lists to numpy arrays
-        predictions = np.array(predictions)
-        labels_list = np.array(labels_list)
-        
-        # Calculate metrics
-        metrics = self.metrics_calculator.calculate_metrics(labels_list, predictions)
-        val_loss = val_loss / len(self.val_loader)
-        
-        return val_loss, metrics
 
 def main():
     parser = argparse.ArgumentParser()

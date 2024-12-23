@@ -38,3 +38,5 @@ make run
 [https://arxiv.org/abs/2410.00267](https://arxiv.org/abs/2410.00267)
 
 KPCA-CAM: Visual Explainability of Deep Computer Vision Models using Kernel PCA Sachin Karmani, Thanushon Sivakaran, Gaurav Prasad, Mehmet Ali, Wenbo Yang, Sheyang Tang
+
+[alkzar90/NIH-Chest-X-ray-dataset](https://huggingface.co/datasets/alkzar90/NIH-Chest-X-ray-dataset)

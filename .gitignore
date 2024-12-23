@@ -2,7 +2,7 @@
 env
 dataset/images
 outputs
-checkpoints
+checkpoints/*/
 
 __pycache__/
 utils/__pycache__/
