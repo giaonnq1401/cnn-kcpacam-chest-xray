@@ -3,6 +3,8 @@ EPOCHS ?= 1
 LR ?= 0.005
 CSV_PATH ?= ./dataset/data_Data_Entry_2017_v2020.csv
 IMG_DIR ?= ./dataset/images/example/images
+TARGET_CLASS ?= 0
+NUM_IMAGES ?= 5
 
 fine-tune:
 	python main.py \
@@ -17,8 +19,12 @@ fine-tune-all:
 	make fine-tune MODEL=vgg16
 	make fine-tune MODEL=vit
 
-run:
-	python kpcacam.py --model_path ./checkpoints/best_model.pth --image_path ./dataset/images/example/images --target_class 0 --output_dir outputs
+visualize:
+	python kpcacam.py --models_dir ./checkpoints --image_path $(IMG_DIR) --target_class $(TARGET_CLASS) --num_images $(NUM_IMAGES)
+
+# List classes
+get-classes:
+	python kpcacam.py --models_dir ./checkpoints --image_path $(IMG_DIR) --target_class $(TARGET_CLASS) --list_classes
 
 install:
 	pip install -r requirements.txt

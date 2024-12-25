@@ -1,6 +1,6 @@
 from sklearn.metrics import recall_score, precision_score, f1_score, roc_auc_score
 class MetricsCalculator:
-    """Class để tính toán các metrics"""
+    """Class to calculate metrics"""
     @staticmethod
     def calculate_metrics(y_true, y_pred, threshold=0.5):
         # Convert predictions to binary using threshold
