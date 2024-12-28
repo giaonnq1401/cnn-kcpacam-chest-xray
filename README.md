@@ -29,7 +29,7 @@ make fine-tun   # Default: Resnet50
 
 ## Visualize KPCA-CAM
 ```
-make run
+make visualize
 ```
 
 # References
