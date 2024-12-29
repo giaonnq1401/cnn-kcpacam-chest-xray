@@ -74,15 +74,16 @@ def main():
            classes=trainer.classes
        )
        
-       print('\nPer-class Metrics:')
-       for i, class_name in enumerate(trainer.classes):
-           print(f"\n{class_name}:")
-           print(f"Recall: {val_metrics['per_class']['recall'][i]:.4f}")
-           print(f"F1: {val_metrics['per_class']['f1'][i]:.4f}")
-           print(f"AUC: {val_metrics['per_class']['auc'][i]:.4f}")
+    #    print('\nPer-class Metrics:')
+    #    for i, class_name in enumerate(trainer.classes):
+    #        print(f"\n{class_name}:")
+    #        print(f"Recall: {val_metrics['per_class']['recall'][i]:.4f}")
+    #        print(f"AUC: {val_metrics['per_class']['auc'][i]:.4f}")
        
-       print(f"Recall: {val_metrics['overall']['recall']}")
-       print(f"F1: {val_metrics['overall']['f1']}")
+       print(f"\Total_positive: {val_metrics['overall']['total_positive']}")
+       print(f"Total predictions: {val_metrics['overall']['total_predictions']}")
+
+       print(f"\nRecall: {val_metrics['overall']['recall']}")
        print(f"AUC: {val_metrics['overall']['auc']}")
 
        if val_loss < trainer.best_val_loss:
@@ -98,6 +99,12 @@ def main():
            }, model_save_path)
            print(f"\nSaved best model to {model_save_path}")
    
+   logger.plot_training_curves(os.path.join(args.output_dir, f'{args.model_name}_training_curves.png'))
+   best_metrics = logger.get_best_model_metrics()
+   print("\nBest model performance:")
+   for key, value in best_metrics.items():
+        print(f"{key}: {value}")
+
    logger.save_results()
 
 if __name__ == '__main__':

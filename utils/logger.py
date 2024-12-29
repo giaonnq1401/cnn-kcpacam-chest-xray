@@ -38,10 +38,8 @@ class ExperimentLogger:
             'train_loss': train_loss,
             'val_loss': val_loss,
             'train_recall': train_metrics['overall']['recall'],
-            'train_f1': train_metrics['overall']['f1'],
             'train_auc': train_metrics['overall']['auc'],
             'val_recall': val_metrics['overall']['recall'],
-            'val_f1': val_metrics['overall']['f1'],
             'val_auc': val_metrics['overall']['auc']
         }
         self.experiment_data.append(overall_data)
@@ -75,7 +73,6 @@ class ExperimentLogger:
                 train_metrics_data = {
                     'Class': classes,
                     'Recall': data['train_metrics']['recall'],
-                    'F1': data['train_metrics']['f1'],
                     'AUC': data['train_metrics']['auc']
                 }
                 train_df = pd.DataFrame(train_metrics_data)
@@ -84,7 +81,6 @@ class ExperimentLogger:
                 val_metrics_data = {
                     'Class': classes,
                     'Recall': data['val_metrics']['recall'],
-                    'F1': data['val_metrics']['f1'],
                     'AUC': data['val_metrics']['auc']
                 }
                 val_df = pd.DataFrame(val_metrics_data)
@@ -104,7 +100,7 @@ class ExperimentLogger:
 
     def get_best_model_metrics(self):
         """
-        Get metrics for the best performing model based on validation F1 score
+        Get metrics for the best performing model based on validation recall
         Returns:
             dict: Best model metrics
         """
@@ -112,7 +108,7 @@ class ExperimentLogger:
             return None
             
         df = pd.DataFrame(self.experiment_data)
-        best_idx = df['val_f1'].idxmax()
+        best_idx = df['val_recall'].idxmax()
         return df.iloc[best_idx].to_dict()
 
     def plot_training_curves(self, save_path=None):
@@ -134,15 +130,6 @@ class ExperimentLogger:
             plt.title('Loss Curves')
             plt.xlabel('Epoch')
             plt.ylabel('Loss')
-            plt.legend()
-            
-            # Plot F1 Score
-            plt.subplot(2, 2, 2)
-            plt.plot(df['epoch'], df['train_f1'], label='Train F1')
-            plt.plot(df['epoch'], df['val_f1'], label='Val F1')
-            plt.title('F1 Score Curves')
-            plt.xlabel('Epoch')
-            plt.ylabel('F1 Score')
             plt.legend()
             
             # Plot Recall
