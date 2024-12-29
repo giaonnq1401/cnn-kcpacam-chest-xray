@@ -1,40 +1,66 @@
-from sklearn.metrics import recall_score, precision_score, f1_score, roc_auc_score
+# metrics.py
+
+import numpy as np
+from sklearn.metrics import  recall_score, f1_score, roc_auc_score
 
 class MetricsCalculator:
-   @staticmethod
-   def calculate_metrics(y_true, y_pred, threshold=0.5):
-       y_pred_binary = (y_pred > threshold).astype(int)
-       
-       recalls = recall_score(y_true, y_pred_binary, average=None, zero_division=1)
-       precisions = precision_score(y_true, y_pred_binary, average=None, zero_division=1) 
-       f1_scores = f1_score(y_true, y_pred_binary, average=None, zero_division=1)
-       
-       # Handle the case where there are no positive predictions for some classes
-       try:
-           auc_scores = roc_auc_score(y_true, y_pred, average=None)
-       except:
-           auc_scores = [0] * y_true.shape[1]
-           
-       macro_recall = recall_score(y_true, y_pred_binary, average='macro', zero_division=1)
-       macro_precision = precision_score(y_true, y_pred_binary, average='macro', zero_division=1)
-       macro_f1 = f1_score(y_true, y_pred_binary, average='macro', zero_division=1)
-       
-       try:
-           macro_auc = roc_auc_score(y_true, y_pred, average='macro')
-       except:
-           macro_auc = 0
-           
-       return {
-           'per_class': {
-               'recall': recalls,
-               'precision': precisions,
-               'f1': f1_scores,
-               'auc': auc_scores
-           },
-           'macro': {
-               'recall': macro_recall,
-               'precision': macro_precision,
-               'f1': macro_f1,
-               'auc': macro_auc
-           }
-       }
+    def __init__(self, threshold=0.5):
+        self.threshold = threshold
+
+    def calculate_metrics(self, y_true, y_pred_proba):
+        """
+        Calculate metrics for multi-label classification
+        Args:
+            y_true: Ground truth labels (binary)
+            y_pred_proba: Predicted probabilities
+        Returns:
+            dict: Dictionary containing metrics
+        """
+        # Convert probabilities to binary predictions using threshold
+        y_pred = (y_pred_proba >= self.threshold).astype(int)
+        
+        # Initialize metrics dict
+        metrics = {
+            'overall': {},
+            'per_class': {
+                'recall': [],
+                'f1': [],
+                'auc': []
+            }
+        }
+        
+        # Calculate per-class metrics
+        n_classes = y_true.shape[1]
+        for i in range(n_classes):
+            # Skip if no positive samples in ground truth
+            if np.sum(y_true[:, i]) == 0:
+                metrics['per_class']['recall'].append(0.0)
+                metrics['per_class']['f1'].append(0.0)
+                metrics['per_class']['auc'].append(0.5)  # Default AUC for no prediction
+                continue
+                
+            # Calculate metrics for this class
+            try:
+                metrics['per_class']['recall'].append(
+                    recall_score(y_true[:, i], y_pred[:, i], zero_division=0))
+                metrics['per_class']['f1'].append(
+                    f1_score(y_true[:, i], y_pred[:, i], zero_division=0))
+                # AUC is calculated on probabilities, not binary predictions
+                metrics['per_class']['auc'].append(
+                    roc_auc_score(y_true[:, i], y_pred_proba[:, i]))
+            except Exception as e:
+                print(f"Error calculating metrics for class {i}: {str(e)}")
+                metrics['per_class']['recall'].append(0.0)
+                metrics['per_class']['f1'].append(0.0)
+                metrics['per_class']['auc'].append(0.5)
+        
+        # Calculate overall metrics (macro average)
+        metrics['overall']['recall'] = np.mean(metrics['per_class']['recall'])
+        metrics['overall']['f1'] = np.mean(metrics['per_class']['f1'])
+        metrics['overall']['auc'] = np.mean(metrics['per_class']['auc'])
+        
+        return metrics
+
+    def _safe_divide(self, numerator, denominator):
+        """Safe division handling zero denominator"""
+        return np.divide(numerator, denominator, out=np.zeros_like(numerator, dtype=float), where=denominator!=0)

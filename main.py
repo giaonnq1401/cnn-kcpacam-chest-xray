@@ -22,13 +22,18 @@ def main():
    parser.add_argument('--batch_size', type=int, default=32)
    parser.add_argument('--num_epochs', type=int, default=10)
    parser.add_argument('--lr', type=float, default=0.001)
+   parser.add_argument('--train_size', type=int, default=None, 
+                   help='Number of training images to use. If None, use all available')
+   parser.add_argument('--test_size', type=int, default=None,
+                   help='Number of test images to use. If None, use all available')
    parser.add_argument('--output_dir', type=str, default='./checkpoints')
    args = parser.parse_args()
 
    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
    
    train_df, test_df = prepare_data(args.csv_path, args.img_dir, 
-                                  args.train_list, args.test_list)
+                               args.train_list, args.test_list,
+                               args.train_size, args.test_size)
    train_transforms, val_transforms = get_transforms()
    
    train_dataset = ChestXrayDataset(train_df, args.img_dir, train_transforms)
@@ -73,10 +78,13 @@ def main():
        for i, class_name in enumerate(trainer.classes):
            print(f"\n{class_name}:")
            print(f"Recall: {val_metrics['per_class']['recall'][i]:.4f}")
-           print(f"Precision: {val_metrics['per_class']['precision'][i]:.4f}")
            print(f"F1: {val_metrics['per_class']['f1'][i]:.4f}")
            print(f"AUC: {val_metrics['per_class']['auc'][i]:.4f}")
        
+       print(f"Recall: {val_metrics['overall']['recall']}")
+       print(f"F1: {val_metrics['overall']['f1']}")
+       print(f"AUC: {val_metrics['overall']['auc']}")
+
        if val_loss < trainer.best_val_loss:
            trainer.best_val_loss = val_loss
            model_save_path = os.path.join(model_output_dir, 'best_model.pth')
