@@ -6,3 +6,4 @@ checkpoints
 
 __pycache__/
 utils/__pycache__/
+*.pth

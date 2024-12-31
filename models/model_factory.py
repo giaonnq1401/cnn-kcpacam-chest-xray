@@ -1,37 +1,45 @@
 # model_factory.py
 
+from torchvision import models
 import torch.nn as nn
-from torchvision.models import (
-   resnet50, ResNet50_Weights,
-   vgg16, VGG16_Weights,
-   vit_b_16, ViT_B_16_Weights
-)
 
 class ModelFactory:
-   @staticmethod
-   def get_model(model_name, num_classes, pretrained=True):
-       model_name = model_name.lower()
-       if model_name == 'resnet50':
-           model = resnet50(weights=ResNet50_Weights.DEFAULT if pretrained else None)
-           num_ftrs = model.fc.in_features
-           model.fc = nn.Sequential(
-               nn.Linear(num_ftrs, num_classes),
-               nn.Sigmoid()
-           )
-       elif model_name == 'vgg16':
-           model = vgg16(weights=VGG16_Weights.DEFAULT if pretrained else None)
-           num_ftrs = model.classifier[-1].in_features
-           model.classifier[-1] = nn.Sequential(
-               nn.Linear(num_ftrs, num_classes),
-               nn.Sigmoid()
-           )
-       elif model_name == 'vit':
-           model = vit_b_16(weights=ViT_B_16_Weights.DEFAULT if pretrained else None)
-           num_ftrs = model.heads.head.in_features
-           model.heads.head = nn.Sequential(
-               nn.Linear(num_ftrs, num_classes),
-               nn.Sigmoid()
-           )
-       else:
-           raise ValueError(f"Model {model_name} not supported")
-       return model
+    @staticmethod
+    def get_model(model_type, num_classes=1, pretrained=True):
+        if model_type == 'resnet50':
+            model = models.resnet50(weights='IMAGENET1K_V1' if pretrained else None)
+            model.fc = nn.Sequential(
+                nn.Linear(2048, 512),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(512, num_classes),
+                nn.Sigmoid()
+            )
+            return model
+            
+        elif model_type == 'vgg16':
+            model = models.vgg16(weights='IMAGENET1K_V1' if pretrained else None)
+            model.classifier[6] = nn.Sequential(
+                nn.Linear(4096, 512),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(512, num_classes),
+                nn.Sigmoid()
+            )
+            return model
+            
+        elif model_type == 'vit':
+            model = models.vit_b_16(weights='IMAGENET1K_V1' if pretrained else None)
+            model.heads = nn.Sequential(
+                nn.Linear(768, 1024),
+                nn.ReLU(),
+                nn.BatchNorm1d(1024),
+                nn.Dropout(0.3),
+                nn.Linear(1024, 512),
+                nn.ReLU(),
+                nn.BatchNorm1d(512),
+                nn.Dropout(0.3),
+                nn.Linear(512, 1),
+                nn.Sigmoid()
+            )
+            return model
