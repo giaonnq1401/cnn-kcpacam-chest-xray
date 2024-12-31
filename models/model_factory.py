@@ -2,7 +2,6 @@
 
 from torchvision import models
 import torch.nn as nn
-from transformers import ViTForImageClassification
 
 class ModelFactory:
     @staticmethod
@@ -30,15 +29,15 @@ class ModelFactory:
             return model
             
         elif model_type == 'vit':
-            # model = ViTForImageClassification.from_pretrained('google/vit-base-patch16-224')
-            # model.classifier = nn.Sequential(
-            #     nn.Linear(768, num_classes),
-            #     nn.Sigmoid()
-            # )
             model = models.vit_b_16(weights='IMAGENET1K_V1' if pretrained else None)
             model.heads = nn.Sequential(
-                nn.Linear(768, 512),
+                nn.Linear(768, 1024),
                 nn.ReLU(),
+                nn.BatchNorm1d(1024),
+                nn.Dropout(0.3),
+                nn.Linear(1024, 512),
+                nn.ReLU(),
+                nn.BatchNorm1d(512),
                 nn.Dropout(0.3),
                 nn.Linear(512, 1),
                 nn.Sigmoid()

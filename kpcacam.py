@@ -213,15 +213,10 @@ class KPCACAMVisualizer:
         plt.title('Original Image')
         plt.axis('off')
         
-        plt.subplot(142)
-        plt.imshow(cam, cmap='jet')
-        plt.title(f'KPCA-CAM\nConf: {confidence:.3f}')
-        plt.axis('off')
-        
-        title = 'Superimposed with BBox'
+        title = (f'Superimposed with BBox {self.model_type}')
         if iou_score is not None:
             title += f'\nIoU: {iou_score:.3f}'
-        plt.subplot(143)
+        plt.subplot(142)
         plt.imshow(cv2.cvtColor(superimposed, cv2.COLOR_BGR2RGB))
         plt.title(title)
         plt.axis('off')
@@ -232,11 +227,23 @@ class KPCACAMVisualizer:
         plt.close()
         
         return output_path, confidence, iou_score
+    
+def calculate_average_iou(results):
+    model_ious = {}
+    for model_type in ['resnet50', 'vgg16', 'vit']:
+        ious = [v['iou'] for k, v in results.items() 
+                if k.startswith(model_type) and v['iou'] is not None]
+        if ious:
+            model_ious[model_type] = {
+                'mean_iou': np.mean(ious),
+                'std_iou': np.std(ious),
+                'num_samples': len(ious)
+            }
+    return model_ious
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image_path', type=str, required=True)
-
     parser.add_argument('--output_dir', type=str, default='outputs')
     parser.add_argument('--bbox_csv', type=str, help='Path to bbox CSV file')
     parser.add_argument('--num_images', type=int, default=None)
@@ -279,7 +286,6 @@ def main():
             else:
                 output_path, conf, iou = visualizer.visualize(
                     args.image_path,
-                    args.target_class,
                     args.output_dir,
                     args.bbox_csv
                 )
@@ -296,6 +302,14 @@ def main():
         print(f"Confidence: {result['confidence']:.3f}")
         if result['iou'] is not None:
             print(f"IoU: {result['iou']:.3f}")
+    
+    if args.bbox_csv:
+        print("\nAverage IoU scores:")
+        model_ious = calculate_average_iou(results)
+        for model, stats in model_ious.items():
+            print(f"\n{model.upper()}:")
+            print(f"Mean IoU: {stats['mean_iou']:.3f} ± {stats['std_iou']:.3f}")
+            print(f"Number of samples: {stats['num_samples']}")
 
 if __name__ == "__main__":
     main()
