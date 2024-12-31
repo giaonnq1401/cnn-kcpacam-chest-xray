@@ -2,7 +2,7 @@ MODEL ?= resnet50
 EPOCHS ?= 1
 LR ?= 0.1
 CSV_PATH ?= ./dataset/data_Data_Entry_2017_v2020.csv
-IMG_DIR ?= ./dataset/images/images_002/images
+IMG_DIR ?= ./dataset/images/bbox
 # IMG_DIR ?= ./dataset/images/images_002/bbox/00003333_002.png
 TARGET_CLASS ?= 3
 NUM_IMAGES ?= 5
@@ -12,8 +12,8 @@ BATCH_SIZE ?= 32
 OUTPUT_DIR ?= ./checkpoints
 BBOX_DIR ?= ./dataset/data_BBox_List_2017.csv 
 # MODEL_PATH ?= ./checkpoints/$(MODEL)/best_model.pth
-TRAIN_SIZE ?= 100
-TEST_SIZE ?= 20
+TRAIN_SIZE ?= 10
+TEST_SIZE ?= 2
 
 
 fine-tune:
@@ -35,7 +35,7 @@ fine-tune-all:
 	make fine-tune MODEL=vit
 
 visualize:
-	python kpcacam.py --models_dir ./checkpoints --image_path $(IMG_DIR) --target_class $(TARGET_CLASS) --num_images $(NUM_IMAGES) --bbox_csv $(BBOX_DIR)
+	python kpcacam.py --image_path $(IMG_DIR) --num_images $(NUM_IMAGES) --bbox_csv $(BBOX_DIR)
 
 # List classes
 get-classes:

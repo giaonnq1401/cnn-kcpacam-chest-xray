@@ -66,21 +66,19 @@ def prepare_data(csv_path, img_dir, train_list_path, test_list_path, train_size=
     return train_df, test_df
 
 def get_transforms():
-   train_transforms = transforms.Compose([
-       transforms.Resize((224, 224)),
-       transforms.RandomHorizontalFlip(),
-       transforms.RandomRotation(10),
-       transforms.ToTensor(),
-       transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-   ])
-   
-   val_transforms = transforms.Compose([
-       transforms.Resize((224, 224)),
-       transforms.ToTensor(),
-       transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-   ])
-   
-   return train_transforms, val_transforms
+    train_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(10),
+        transforms.ToTensor()
+    ])
+
+    test_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor()
+    ])
+    
+    return train_transform, test_transform
 
 class ChestXrayDataset(Dataset):
    def __init__(self, df, img_dir, transform=None):
