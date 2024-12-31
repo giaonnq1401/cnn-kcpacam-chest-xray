@@ -38,24 +38,28 @@ class KPCACAMVisualizer:
     def _register_hooks(self):
         def hook_fn(module, input, output):
             if self.model_type == 'vit':
-                self.features = output[0].detach().cpu().numpy()
+                # For ViT, capture the whole output
+                if isinstance(output, tuple):
+                    self.features = output[0].detach().cpu().numpy()
+                else:
+                    self.features = output.detach().cpu().numpy()
             else:
+                # For CNN models (ResNet, VGG)
                 self.features = output.detach().cpu().numpy()
+            
+            # Print shape for debugging
+            print("Hook captured feature shape:", self.features.shape)
         
         if self.model_type == 'resnet50':
             self.model.layer4[-1].register_forward_hook(hook_fn)
         elif self.model_type == 'vgg16':
             self.model.features[-1].register_forward_hook(hook_fn)
         elif self.model_type == 'vit':
-            # self.model.encoder.layer[-1].register_forward_hook(hook_fn)
-            if hasattr(self.model, 'vit') and hasattr(self.model.vit, 'encoder'):
-                self.model.vit.encoder.layer[-1].register_forward_hook(hook_fn)
-            elif hasattr(self.model, 'encoder'):
-                self.model.encoder.layer[-1].register_forward_hook(hook_fn)
-            elif hasattr(self.model, 'layers'):
-                self.model.layers[-1].register_forward_hook(hook_fn)
+            # For ViT from torchvision, hook into the final encoder layer
+            if hasattr(self.model, 'encoder') and hasattr(self.model.encoder, 'layers'):
+                self.model.encoder.layers[-1].register_forward_hook(hook_fn)
             else:
-                raise AttributeError("Unable to find encoder or layers in ViT model.")
+                raise AttributeError("Unable to find appropriate layer in ViT model for hook registration.")
 
     def preprocess_image(self, image_path):
         image = Image.open(image_path).convert('RGB')
@@ -109,26 +113,55 @@ class KPCACAMVisualizer:
             output = self.model(input_tensor)
         
         if self.model_type == 'vit':
-            feature_maps = self.features[1:]
-            h = w = int(np.sqrt(len(feature_maps)))
-            feature_maps = feature_maps.reshape(h, w, -1)
-            feature_maps = feature_maps.transpose(2, 0, 1)
+            # Handle ViT features
+            feature_maps = self.features
+            print("Initial feature shape:", feature_maps.shape)
+            
+            # Remove batch dimension
+            feature_maps = feature_maps[0]  # Now shape is (197, 768)
+            
+            # Remove CLS token (first token)
+            feature_maps = feature_maps[1:]  # Now shape is (196, 768)
+            
+            # Reshape to (14, 14, 768) - patch grid
+            patch_grid_size = int(np.sqrt(feature_maps.shape[0]))  # Should be 14
+            feature_maps = feature_maps.reshape(patch_grid_size, patch_grid_size, -1)
+            
+            # Transpose to (hidden_dim, grid, grid) for consistency with CNN features
+            feature_maps = feature_maps.transpose(2, 0, 1)  # Now shape is (768, 14, 14)
         else:
-            feature_maps = self.features[0]
+            # Handle CNN features (ResNet, VGG)
+            # Remove batch dimension
+            feature_maps = self.features[0]  # Now shape should be (C, H, W)
         
         print(f"{self.model_type} feature_maps shape:", feature_maps.shape)
         
+        # Ensure we're working with valid dimensions
+        if len(feature_maps.shape) != 3:
+            raise ValueError(f"Expected 3D feature maps, got shape {feature_maps.shape}")
+        
+        # Reshape features for KPCA
         reshaped_features = feature_maps.reshape(feature_maps.shape[0], -1).T
+        
+        # Apply KPCA
         kpca = KernelPCA(n_components=n_components, kernel='rbf')
         kpca_features = kpca.fit_transform(reshaped_features)
         
+        # Create attention map
         cam = np.zeros(feature_maps.shape[1:])
         for comp in kpca_features.T:
             comp_map = comp.reshape(feature_maps.shape[1:])
             cam += np.abs(comp_map)
         
+        # Normalize between 0 and 1, handling potential numerical issues
+        cam_min, cam_max = np.min(cam), np.max(cam)
+        if cam_min != cam_max:  # Avoid division by zero
+            cam = (cam - cam_min) / (cam_max - cam_min)
+        else:
+            cam = np.zeros_like(cam)
+        
+        # Resize to match input image size
         cam = cv2.resize(cam, (224, 224))
-        cam = (cam - np.min(cam)) / (np.max(cam) - np.min(cam))
         
         return cam, output.squeeze().item()
 
